@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:upi_extractor/models/category_mapping.dart';
 import 'package:upi_extractor/models/upi_transaction.dart';
+import 'package:upi_extractor/services/category_mapping_service.dart';
 import 'package:upi_extractor/services/mapping_service.dart';
 import 'package:upi_extractor/services/upi_extractor_service.dart';
 
@@ -175,6 +177,35 @@ dinner with team
       expect(row[10], 'Transfer to Others'); // Category
       expect(row[11], 'REF-20261122-BUMM'); // Reference
       expect(row[12], 0); // Charges
+    });
+
+    test('Custom User Category Mappings and Dynamic Categorization', () {
+      final customMappings = [
+        CategoryMapping(
+          category: 'Pet Supplies',
+          keywords: ['pedigree', 'dog food', 'vet clinic', 'cat litter'],
+        ),
+        CategoryMapping(
+          category: 'Fitness',
+          keywords: ['cult fit', 'gym', 'protein whey', 'creatine'],
+        ),
+      ];
+
+      // Match custom keyword in message
+      final cat1 = CategoryMappingService.categorize('bought pedigree 3kg', mappings: customMappings);
+      expect(cat1, 'Pet Supplies');
+
+      // Match custom keyword in payee name
+      final cat2 = CategoryMappingService.categorize('', name: 'CULT FIT HYDERABAD', mappings: customMappings);
+      expect(cat2, 'Fitness');
+
+      // Fallback to default rules if not in custom mappings
+      final cat3 = CategoryMappingService.categorize('kothimera and tamata');
+      expect(cat3, 'Vegetables');
+
+      // Unmatched returns Transfer to Others
+      final cat4 = CategoryMappingService.categorize('random payment note XYZ123', mappings: customMappings);
+      expect(cat4, 'Transfer to Others');
     });
   });
 }

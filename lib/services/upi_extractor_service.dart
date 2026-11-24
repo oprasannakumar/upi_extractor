@@ -1,21 +1,28 @@
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:intl/intl.dart';
 import '../models/account_mapping.dart';
+import '../models/category_mapping.dart';
 import '../models/upi_transaction.dart';
+import 'category_mapping_service.dart';
 import 'mapping_service.dart';
 
 class UpiExtractorService {
   /// Local on-device OCR using Google ML Kit
   static Future<UpiTransaction> extractFromImage(
     String imagePath,
-    List<AccountMapping> currentMappings,
-  ) async {
+    List<AccountMapping> currentMappings, {
+    List<CategoryMapping>? categoryMappings,
+  }) async {
     final inputImage = InputImage.fromFilePath(imagePath);
     final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
 
     try {
       final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
-      return parseRecognizedText(recognizedText.text, currentMappings);
+      return parseRecognizedText(
+        recognizedText.text,
+        currentMappings,
+        categoryMappings: categoryMappings,
+      );
     } finally {
       await textRecognizer.close();
     }
@@ -24,8 +31,9 @@ class UpiExtractorService {
   /// Pure deterministic parsing engine for UPI text
   static UpiTransaction parseRecognizedText(
     String rawText,
-    List<AccountMapping> mappings,
-  ) {
+    List<AccountMapping> mappings, {
+    List<CategoryMapping>? categoryMappings,
+  }) {
     final lines = rawText
         .split('\n')
         .map((l) => l.trim())
@@ -291,7 +299,7 @@ class UpiExtractorService {
     }
 
     // 11. Categorize based on Msg & Payee Name
-    final category = categorizeByMessage(msg, name: name);
+    final category = categorizeByMessage(msg, name: name, mappings: categoryMappings);
 
     return UpiTransaction(
       date: date,
@@ -468,30 +476,19 @@ class UpiExtractorService {
     return true;
   }
 
-  static String categorizeByMessage(String msg, {String name = ''}) {
+  static String categorizeByMessage(
+    String msg, {
+    String name = '',
+    List<CategoryMapping>? mappings,
+  }) {
+    final cat = CategoryMappingService.categorize(msg, name: name, mappings: mappings);
+    if (cat != 'Transfer to Others') return cat;
+    return _oldCategorize(msg, name: name);
+  }
+
+  static String _oldCategorize(String msg, {String name = ''}) {
     final lowerMsg = msg.toLowerCase().trim();
     final lowerName = name.toLowerCase().trim();
-
-    // 1. Recharge & Bills
-    if (lowerMsg.contains('recharge') ||
-        lowerMsg.contains('prepaid') ||
-        lowerMsg.contains('postpaid') ||
-        lowerName.contains('prepaid') ||
-        lowerName.contains('postpaid') ||
-        lowerName.contains('airtel') ||
-        lowerName.contains('jio') ||
-        lowerName.contains('vi ') ||
-        lowerName.contains('bsnl') ||
-        lowerMsg.contains('electricity') ||
-        lowerMsg.contains('water') ||
-        lowerMsg.contains('gas') ||
-        lowerMsg.contains('broadband') ||
-        lowerMsg.contains('wifi') ||
-        lowerMsg.contains('dth') ||
-        lowerMsg.contains('mobile') ||
-        lowerMsg.contains('bill')) {
-      return "Bills & Utilities";
-    }
 
     // 2. Advance Salary / Salary / Personal transfers
     if (lowerMsg.contains('advance salary') ||

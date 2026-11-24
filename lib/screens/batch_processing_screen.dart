@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/batch_record.dart';
 import '../models/upi_transaction.dart';
 import '../services/ai_pipeline_service.dart';
+import '../services/category_mapping_service.dart';
 import '../services/google_sheets_service.dart';
 import '../services/history_service.dart';
 import '../services/mapping_service.dart';
@@ -62,6 +63,7 @@ class _BatchProcessingScreenState extends State<BatchProcessingScreen> {
     });
 
     final mappings = await MappingService.loadMappings();
+    final categoryMappings = await CategoryMappingService.loadMappings();
 
     for (int i = 0; i < _selectedPaths.length; i++) {
       final path = _selectedPaths[i];
@@ -74,6 +76,7 @@ class _BatchProcessingScreenState extends State<BatchProcessingScreen> {
         final tx = await AiPipelineService.extractWithPipeline(
           path,
           mappings,
+          categoryMappings: categoryMappings,
           onStepChange: (step) {
             setState(() {
               _currentStatus = 'Item ${i + 1}/${_selectedPaths.length}: $step';
@@ -204,11 +207,13 @@ class _BatchProcessingScreenState extends State<BatchProcessingScreen> {
     });
 
     final mappings = await MappingService.loadMappings();
+    final categoryMappings = await CategoryMappingService.loadMappings();
 
     try {
       final updatedTx = await AiPipelineService.extractWithPipeline(
         path,
         mappings,
+        categoryMappings: categoryMappings,
       );
 
       setState(() {

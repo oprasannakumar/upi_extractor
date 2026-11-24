@@ -4,14 +4,15 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/account_mapping.dart';
+import '../models/category_mapping.dart';
 import '../models/upi_transaction.dart';
 import '../services/ai_pipeline_service.dart';
+import '../services/category_mapping_service.dart';
 import '../services/gemini_service.dart';
 import '../services/google_sheets_service.dart';
 import '../services/groq_service.dart';
 import '../services/history_service.dart';
 import '../services/mapping_service.dart';
-import '../services/upi_extractor_service.dart';
 import '../widgets/google_sheets_sheet.dart';
 import '../widgets/user_profile_avatar.dart';
 import 'batch_processing_screen.dart';
@@ -82,12 +83,14 @@ class _ExtractorScreenState extends State<ExtractorScreen> {
       GeminiService.getModel(),
       GroqService.getModel(),
       MappingService.loadMappings(),
+      CategoryMappingService.loadMappings(),
     ]);
 
     final currentMode = results[0] as String;
     final currentGeminiModel = results[1] as String;
     final currentGroqModel = results[2] as String;
     final mappings = results[3] as List<AccountMapping>;
+    final categoryMappings = results[4] as List<CategoryMapping>;
 
     if (mounted) {
       setState(() {
@@ -101,6 +104,7 @@ class _ExtractorScreenState extends State<ExtractorScreen> {
       final result = await AiPipelineService.extractWithPipeline(
         file.path,
         mappings,
+        categoryMappings: categoryMappings,
         onStepChange: (step) {
           if (mounted) {
             setState(() => _currentPipelineStatus = step);
@@ -437,7 +441,7 @@ class _ExtractorScreenState extends State<ExtractorScreen> {
                 _buildEditField('👤 Name', nameCtrl),
                 _buildEditField('🆔 ID', idCtrl),
                 _buildEditField('📝 Msg', msgCtrl, onChanged: (newMsg) {
-                  categoryCtrl.text = UpiExtractorService.categorizeByMessage(newMsg);
+                  categoryCtrl.text = CategoryMappingService.categorize(newMsg, name: nameCtrl.text);
                 }),
                 _buildEditField('💰 Amount', amountCtrl, keyboardType: TextInputType.number),
                 _buildEditField('💸 Charges', chargesCtrl, keyboardType: TextInputType.number),

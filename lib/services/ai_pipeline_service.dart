@@ -1,6 +1,8 @@
 import 'dart:developer' as dev;
 import '../models/account_mapping.dart';
+import '../models/category_mapping.dart';
 import '../models/upi_transaction.dart';
+import 'category_mapping_service.dart';
 import 'gemini_service.dart';
 import 'groq_service.dart';
 import 'upi_extractor_service.dart';
@@ -13,13 +15,23 @@ class AiPipelineService {
   static Future<UpiTransaction> extractWithPipeline(
     String imagePath,
     List<AccountMapping> mappings, {
+    List<CategoryMapping>? categoryMappings,
     void Function(String stepMessage)? onStepChange,
   }) async {
+    final catMappings = categoryMappings ?? await CategoryMappingService.loadMappings();
     final engineMode = await GeminiService.getEngineMode();
     final groqKey = await GroqService.getApiKey();
     final groqModel = await GroqService.getModel();
     final geminiKey = await GeminiService.getApiKey();
     final geminiModel = await GeminiService.getModel();
+
+    UpiTransaction applyCategory(UpiTransaction tx) {
+      final customCat = CategoryMappingService.categorize(tx.msg, name: tx.name, mappings: catMappings);
+      if (customCat != 'Transfer to Others') {
+        tx.category = customCat;
+      }
+      return tx;
+    }
 
     // Case 1: Primary is Groq (Default)
     if (engineMode == 'groq') {
@@ -32,7 +44,7 @@ class AiPipelineService {
             groqKey,
             modelOverride: groqModel,
           );
-          return result;
+          return applyCategory(result);
         } catch (e) {
           dev.log('Groq extraction failed: $e');
           onStepChange?.call('Groq encountered an issue. Falling back to Gemini ($geminiModel)...');
@@ -50,7 +62,7 @@ class AiPipelineService {
             geminiKey,
             modelOverride: geminiModel,
           );
-          return result;
+          return applyCategory(result);
         } catch (e) {
           dev.log('Gemini fallback failed: $e');
           onStepChange?.call('Gemini fallback failed. Trying Local On-Device AI Engine...');
@@ -60,7 +72,8 @@ class AiPipelineService {
       }
 
       // Fallback 2: Local Engine
-      return await UpiExtractorService.extractFromImage(imagePath, mappings);
+      final localResult = await UpiExtractorService.extractFromImage(imagePath, mappings, categoryMappings: catMappings);
+      return applyCategory(localResult);
     }
 
     // Case 2: Primary is Gemini
@@ -74,7 +87,7 @@ class AiPipelineService {
             geminiKey,
             modelOverride: geminiModel,
           );
-          return result;
+          return applyCategory(result);
         } catch (e) {
           dev.log('Gemini extraction failed: $e');
           onStepChange?.call('Gemini failed. Falling back to Groq ($groqModel)...');
@@ -90,16 +103,18 @@ class AiPipelineService {
             groqKey,
             modelOverride: groqModel,
           );
-          return result;
+          return applyCategory(result);
         } catch (_) {}
       }
 
       // Fallback to Local
-      return await UpiExtractorService.extractFromImage(imagePath, mappings);
+      final localResult = await UpiExtractorService.extractFromImage(imagePath, mappings, categoryMappings: catMappings);
+      return applyCategory(localResult);
     }
 
     // Case 3: Local Engine selected explicitly
     onStepChange?.call('Processing with Local On-Device Engine...');
-    return await UpiExtractorService.extractFromImage(imagePath, mappings);
+    final localResult = await UpiExtractorService.extractFromImage(imagePath, mappings, categoryMappings: catMappings);
+    return applyCategory(localResult);
   }
 }
